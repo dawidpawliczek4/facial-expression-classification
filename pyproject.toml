@@ -1,0 +1,21 @@
+[project]
+name = "facexpr"
+version = "0.1.0"
+description = "Facial expression classification package"
+authors = [
+    {name = "Mateusz Garncarczyk, Jose Javier Garcia Torrejon, Dawid Pawliczek"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy (>=2.2.6,<3.0.0)"    
+]
+packages = [
+    {include = "facexpr", from = "src"},
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
