@@ -1,0 +1,112 @@
+# Byte‐compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments (if someone uses a local venv instead of Poetry)
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Poetry’s cache / virtualenvs (Poetry normally stores venvs elsewhere, but just in case)
+.poetry/
+
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# pyenv
+.python-version
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ---- Project‐specific ignores ----
+
+# Data folders (we don’t commit raw or preprocessed images)
+data/raw/
+data/preprocessed/
+
+# If you have a “sample” folder that’s optional, you can keep it—otherwise ignore large samples:
+# data/sample/
+
+# Logs and outputs
+outputs/
+logs/
+
+# If you generate any SQLite/DB files locally
+*.sqlite3
+*.db
+
+# If you store any secret keys or local .env files (do not commit these)
+.env
+*.env
+
+# If you generate any local caches for experiment tracking
+wandb/
+mlruns/
+
+# Miscellaneous
+*.bak
+*.swp

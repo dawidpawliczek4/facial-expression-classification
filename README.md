@@ -51,3 +51,61 @@ Understanding and classifying human facial expressions is a cornerstone of affec
 ## Project Structure
 
 *TODO: outline key folders and scripts (data preparation, models, evaluation, inference).*
+
+## Installaton
+
+After you’ve cloned the repo, you need to:
+
+1. **Install Poetry (if you don’t already have it).**
+
+   ```
+   curl -sSL https://install.python-poetry.org | python3 -
+   ```
+
+   Make sure `poetry` is on your PATH (e.g. `export PATH="$HOME/.local/bin:$PATH"`).
+
+2. **Change into your project directory** (where `pyproject.toml` lives):
+
+   ```bash
+   cd facial-expression-classification
+   ```
+
+3. **Install all dependencies via Poetry**:
+
+   ```bash
+   poetry install
+   ```
+
+   This will:
+
+   * Create (or reuse) a virtual environment under Poetry’s control.
+   * Read `pyproject.toml` and `poetry.lock` and install exactly the versions you specified (e.g. NumPy, etc.).
+
+4. **Activate the virtualenv shell** 
+
+   ```bash
+   poetry env activate
+   ```
+
+   That command should return the path to virtual env.
+   e.g. source /Users/some_user/Library/Caches/pypoetry/virtualenvs/facexpr-Wp4LdDR0-py3.13/bin/activate
+   Run that command.
+
+5. **Verify that your entry-point works**. For example:
+
+   ```bash
+   poetry run facexpr-demo
+   ```
+
+   You should see the "hello world" printed in console.
+
+6. **Run data download scripts**
+   Pull in FER-2013 and preprocess into `data/preprocessed/`
+
+   ```bash
+   cd ./data
+   chmod +x download_data.sh
+   ./download_data.sh
+   ```
+
+   This will populate your `data/` folder (so the training/inference code can find images).
