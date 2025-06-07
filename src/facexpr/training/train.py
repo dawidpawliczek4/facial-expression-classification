@@ -1,5 +1,3 @@
-# src/facexpr/training/train.py
-
 import argparse
 import torch
 import torch.nn as nn
@@ -7,7 +5,8 @@ import torch.optim as optim
 from facexpr.data.load_data import make_dataloaders
 from facexpr.models.cnn import SimpleCnnModel
 
-def main():
+def train():
+    # TODO: train better CNN, cuz that's shit.
     """
     Trains a baseline CNN model for facial expression classification.
 
@@ -47,7 +46,7 @@ def main():
         running_loss = 0.0
         correct = total = 0
         for imgs, labels in train_loader:
-            imgs, labels = imgs.to(device), labels.to(device).argmax(dim=1)
+            imgs, labels = imgs.to(device), labels.to(device)
             optimizer.zero_grad()
             outputs = model(imgs)
             loss = criterion(outputs, labels)
@@ -66,7 +65,7 @@ def main():
         val_loss = val_correct = val_total = 0
         with torch.no_grad():
             for imgs, labels in val_loader:
-                imgs, labels = imgs.to(device), labels.to(device).argmax(dim=1)
+                imgs, labels = imgs.to(device), labels.to(device)
                 outputs = model(imgs)
                 loss = criterion(outputs, labels)
                 val_loss += loss.item() * imgs.size(0)
@@ -81,7 +80,7 @@ def main():
               f"Train loss {train_loss:.4f}, acc {train_acc:.4f} | "
               f"Val loss {val_loss:.4f}, acc {val_acc:.4f}")
 
-    torch.save(model.state_dict(), "outputs/checkpoints/baseline_cnn.pth")
+    torch.save(model.state_dict(), "./outputs/models/baseline_cnn.pth")
 
 if __name__ == "__main__":
-    main()
+    train()

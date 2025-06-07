@@ -1,5 +1,3 @@
-# src/facexpr/data/load_data.py
-
 import os
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
