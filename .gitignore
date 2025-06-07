@@ -87,13 +87,13 @@ Desktop.ini
 # Data folders (we don’t commit raw or preprocessed images)
 data/raw/
 data/preprocessed/
-data/*
+data/downloaded_data/
 
 # If you have a “sample” folder that’s optional, you can keep it—otherwise ignore large samples:
 # data/sample/
 
 # Logs and outputs
-outputs/
+# outputs/
 logs/
 
 # If you generate any SQLite/DB files locally
