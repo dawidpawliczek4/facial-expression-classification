@@ -12,12 +12,12 @@ from sklearn.metrics import confusion_matrix, classification_report, f1_score
 
 
 CONFIG = {
-    "data_dir": "/path/to/data/downloaded_data",
+    "data_dir": "./data/downloaded_data/data",
     "batch_size": 32,
     "epochs": 10,
     "lr": 1e-3,
-    "save_path": "outputs/models/model.pth",
-    "log_dir": "outputs/logs",
+    "save_path": "./outputs/models/model.pth",
+    "log_dir": "./outputs/logs",
     "img_size": 224
 }
 
@@ -83,15 +83,13 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    
-    target_size = 224
+    print("loading data...")
     loaders = make_dataloaders(
         data_dir=CONFIG["data_dir"],
         batch_size=CONFIG["batch_size"],
-        img_size=target_size,
+        img_size=CONFIG['img_size'],
         num_workers=2,
         augment=True,
-        channels=3
     )
     train_loader, val_loader = loaders["train"], loaders["val"]
 
@@ -105,6 +103,7 @@ def main():
     for param in model.backbone.parameters():
         param.requires_grad = False
 
+    print("starting loop...")
     for epoch in range(1, CONFIG["epochs"] + 1):
         model.train()
         train_loss = 0.0
