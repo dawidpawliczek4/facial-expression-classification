@@ -15,8 +15,23 @@ class ResNet50Classifier(nn.Module):
         self.backbone = models.resnet50(pretrained=pretrained)
         
         in_features = self.backbone.fc.in_features
-        self.backbone.fc = nn.Linear(in_features, num_classes)
+        
+        # Replace the final fully connected layer
+        self.backbone.fc = nn.Identity()
+        
+        # Create a new classifier
+        self.classifier = nn.Sequential(
+            nn.Linear(in_features, 512),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(512, num_classes)
+        )
 
     def forward(self, x):
-        # x shape: (batch_size, 3, H, W)
-        return self.backbone(x)
+        # Extract features using the backbone
+        features = self.backbone(x)
+        
+        # Pass through the classifier
+        output = self.classifier(features)
+        
+        return output
