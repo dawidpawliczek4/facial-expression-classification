@@ -7,7 +7,8 @@ def make_dataloaders(
     batch_size: int = 32,
     img_size: int = 48,
     num_workers: int = 4,
-    augment: bool = False
+    augment: bool = False,
+    grayscale: bool = True
 ):
     """
     Returns a dict with DataLoaders for 'train', 'val', and 'test' based on the following structure:
@@ -22,16 +23,21 @@ def make_dataloaders(
       img_size: image size (crop/resize to square img_size x img_size)
       num_workers: number of workers for DataLoader
       augment: whether to enable augmentation (only for train)
+      grayscale: whether to convert images to grayscale or keep RGB
     Returns:
       {"train": train_loader, "val": val_loader, "test": test_loader}
     """
 
     common_tfms = [
-        transforms.Grayscale(num_output_channels=1),
         transforms.Resize((img_size, img_size)),
         transforms.ToTensor(),            # z [0,255]→[0,1], float32
     ]
-    normalize = transforms.Normalize(mean=[0.5], std=[0.5])  # do [-1,1]
+    
+    if grayscale:
+        common_tfms.insert(0, transforms.Grayscale(num_output_channels=1))
+        normalize = transforms.Normalize(mean=[0.5], std=[0.5])  # to [-1,1]
+    else:
+        normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # to [-1,1]
 
     train_tfms = []
     if augment:

@@ -14,7 +14,7 @@ class EfficientNetV2Classifier(nn.Module):
         self.backbone = efficientnet_v2_s(weights=EfficientNet_V2_S_Weights.DEFAULT)
         
         # Get the number of features from the backbone
-        in_features = self.backbone.classifier[1].in_features
+        in_features = self.backbone.classifier[1].in_features # 1280
         
         # Replace the classifier with our own
         self.backbone.classifier = nn.Identity()
@@ -25,9 +25,9 @@ class EfficientNetV2Classifier(nn.Module):
             nn.Linear(in_features, num_classes)
         )
 
-def forward(self, x):
-    # Extract features using the backbone
-    features = self.backbone(x)
-    # Pass through our custom classifier
-    output = self.classifier(features)
-    return output
+    def forward(self, x):
+        # Extract features using the backbone
+        features = self.backbone(x)
+        # Pass through our custom classifier
+        output = self.classifier(features)
+        return output

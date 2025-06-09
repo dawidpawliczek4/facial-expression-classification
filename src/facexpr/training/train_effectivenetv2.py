@@ -90,6 +90,7 @@ def main():
         img_size=CONFIG['img_size'],
         num_workers=2,
         augment=True,
+        grayscale=False
     )
     train_loader, val_loader = loaders["train"], loaders["val"]
 
