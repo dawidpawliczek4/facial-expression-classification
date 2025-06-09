@@ -6,18 +6,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from facexpr.data.load_data import make_dataloaders
-from facexpr.models.resnet import ResNet50Classifier
+from facexpr.models.effective_net_v2  import EfficientNetV2Classifier
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from sklearn.metrics import confusion_matrix, classification_report, f1_score
 
-# Replace argparse with a simple CONFIG dictionary
+
 CONFIG = {
-    "data_dir": "/path/to/data/downloaded_data",  # <-- set your path here
+    "data_dir": "/path/to/data/downloaded_data",
     "batch_size": 32,
     "epochs": 10,
     "lr": 1e-3,
     "save_path": "outputs/models/model.pth",
-    "log_dir": "outputs/logs"
+    "log_dir": "outputs/logs",
+    "img_size": 224
 }
 
 def evaluate_model(model, dataloader, device, criterion):
@@ -74,21 +75,19 @@ def plot_f1_history(f1_history, log_dir, class_names=None):
     plt.close()
 
 def main():
-    args = CONFIG
-
-    os.makedirs(os.path.dirname(args["save_path"]), exist_ok=True)
-    os.makedirs(os.path.dirname(args["log_dir"]), exist_ok=True)
+    os.makedirs(os.path.dirname(CONFIG["save_path"]), exist_ok=True)
+    os.makedirs(os.path.dirname(CONFIG["log_dir"]), exist_ok=True)
 
     class_names = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
     f1_history = []
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    #target size 224 for resnet
+    
     target_size = 224
     loaders = make_dataloaders(
-        data_dir=args["data_dir"],
-        batch_size=args["batch_size"],
+        data_dir=CONFIG["data_dir"],
+        batch_size=CONFIG["batch_size"],
         img_size=target_size,
         num_workers=2,
         augment=True,
@@ -96,28 +95,20 @@ def main():
     )
     train_loader, val_loader = loaders["train"], loaders["val"]
 
-    model = ResNet50Classifier(num_classes=7, pretrained=True).to(device)
+    model = EfficientNetV2Classifier(num_classes=7).to(device)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-    optimizer = optim.AdamW(model.parameters(), lr=args["lr"])
-    scheduler = CosineAnnealingLR(optimizer, T_max=args["epochs"])
+    optimizer = optim.AdamW(model.parameters(), lr=CONFIG["lr"])
+    scheduler = CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
 
-    # freeze parameters of resnet
+
     for param in model.backbone.parameters():
         param.requires_grad = False
-    for name, param in model.backbone.named_parameters():
-        if name.startswith("layer4") or name.startswith("fc"):
-            param.requires_grad = True
 
-    for epoch in range(1, args["epochs"] + 1):
+    for epoch in range(1, CONFIG["epochs"] + 1):
         model.train()
         train_loss = 0.0
         train_correct = train_total = 0
-
-        #unfreeze some - 'gradual unfreeze'
-        if epoch == args["epochs"] // 2:
-            for param in model.backbone.layer3.parameters():
-                param.requires_grad = True
 
         for imgs, labels in train_loader:
             imgs, labels = imgs.to(device), labels.to(device)
@@ -140,12 +131,12 @@ def main():
         cm, f1, report, val_loss, val_correct, val_total = evaluate_model(model, val_loader, device, criterion)
 
         f1_history.append(f1)
-        plot_confusion_matrix(cm, epoch, args["log_dir"], class_names)
+        plot_confusion_matrix(cm, epoch, CONFIG["log_dir"], class_names)
 
         val_loss /= val_total
         val_acc = val_correct / val_total
 
-        all_report_path = os.path.join(args["log_dir"], "classification_reports.txt")
+        all_report_path = os.path.join(CONFIG["log_dir"], "classification_reports.txt")
         with open(all_report_path, "a") as f:
             f.write(f"\n==== Epoch {epoch:02d} ====\n")
             f.write(report)
@@ -154,11 +145,11 @@ def main():
               f"Train loss {train_loss:.4f}, acc {train_acc:.4f} | "
               f"Val loss {val_loss:.4f}, acc {val_acc:.4f}")
 
-    torch.save(model.state_dict(), args["save_path"])
-    print(f"Model saved to {args['save_path']}")
+    torch.save(model.state_dict(), CONFIG["save_path"])
+    print(f"Model saved to {CONFIG['save_path']}")
 
     f1_history_np = np.stack(f1_history)
-    plot_f1_history(f1_history_np, args["log_dir"], class_names)
+    plot_f1_history(f1_history_np, CONFIG["log_dir"], class_names)
 
 if __name__ == "__main__":
     main()
