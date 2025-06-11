@@ -6,21 +6,21 @@ import numpy as np
 import wandb
 from facexpr.data.load_data import make_dataloaders
 from facexpr.efficientnet.model import EfficientNetV2Classifier
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import OneCycleLR
 from facexpr.utils.visualization import plot_confusion_matrix, plot_f1_history
 from sklearn.metrics import confusion_matrix, classification_report, f1_score
-# from torch.amp import autocast, GradScaler
-# from lion_pytorch import Lion 
+from torch.amp import autocast, GradScaler
+from lion_pytorch import Lion
 
 CONFIG = {
     "data_dir": "./data/downloaded_data/data",
     "batch_size": 32,
     "epochs": 5,
-    "lr": 1e-3,
+    "lr": 3e-4,
     "save_path": "./outputs/models/model.pth",
     "img_size": 224,
     "project": "fer2013-efficientnetv2",
-    "name": "6-cbam"
+    "name": "7-cbam-arc-lion"
 }
 
 def main():
@@ -47,13 +47,11 @@ def main():
 
     model = EfficientNetV2Classifier(num_classes=7).to(device)
 
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)    
-    optimizer = optim.AdamW(model.parameters(), lr=CONFIG["lr"])
-    scheduler = CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
-
-    # TODO:
-    # optimizer = Lion(model.parameters(), lr=CONFIG["lr"], weight_decay=1e-2)
-    # scaler = GradScaler()
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    scheduler = OneCycleLR(optimizer, max_lr=3e-4, steps_per_epoch=len(train_loader),
+                           epochs=CONFIG["epochs"], pct_start=0.3, div_factor=25, final_div_factor=1e4)
+    optimizer = Lion(model.parameters(), lr=CONFIG["lr"], weight_decay=1e-3)
+    scaler = GradScaler()
 
     print("starting loop...")
     for epoch in range(1, CONFIG["epochs"] + 1):
@@ -65,26 +63,25 @@ def main():
             imgs, labels = imgs.to(device), labels.to(device)
             optimizer.zero_grad()
 
-            # with autocast('cuda', dtype=torch.bfloat16):
-            outputs = model(imgs)
-            loss = criterion(outputs, labels)
-            
-            # scaler.scale(loss).backward()
+            with autocast():
+                outputs = model(imgs, labels)
+                loss = criterion(outputs, labels)
+
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(
-                model.parameters(), 
+                model.parameters(),
                 max_norm=1.0,
                 error_if_nonfinite=True
             )
-            # scaler.step(optimizer)
-            # scaler.update()
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
+            scheduler.step()
 
             train_loss += loss.item() * imgs.size(0)
             preds = outputs.argmax(dim=1)
             train_correct += (preds == labels).sum().item()
             train_total += labels.size(0)
-
-        scheduler.step()
 
         train_loss /= train_total
         train_acc = train_correct / train_total
@@ -119,6 +116,7 @@ def main():
     torch.save(model.state_dict(), CONFIG["save_path"])
     print(f"Model saved to {CONFIG['save_path']}")
 
+
 def evaluate_model(model, dataloader, device, criterion):
     model.eval()
     all_preds = []
@@ -150,5 +148,3 @@ def evaluate_model(model, dataloader, device, criterion):
 
 if __name__ == "__main__":
     main()
-
-
