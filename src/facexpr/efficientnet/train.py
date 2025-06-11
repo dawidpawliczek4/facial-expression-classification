@@ -6,7 +6,6 @@ import numpy as np
 import wandb
 from facexpr.data.load_data import make_dataloaders
 from facexpr.efficientnet.model import EfficientNetV2Classifier
-from facexpr.efficientnet.model_simple import SimpleClassifier
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from facexpr.utils.visualization import plot_confusion_matrix, plot_f1_history
 from sklearn.metrics import confusion_matrix, classification_report, f1_score
@@ -15,14 +14,64 @@ from torch.optim import AdamW
 
 CONFIG = {
     "data_dir": "./data/downloaded_data/data",
-    "batch_size": 32,
-    "epochs": 10,
-    "lr": 1e-3,
+    "batch_size": 64,
+    "epochs": 50,
+    "lr": 1e-4,
     "save_path": "./outputs/models/model.pth",
     "img_size": 224,
     "project": "fer2013-efficientnetv2",
-    "name": "test-simpleclassifier"
+    "name": "8-cbam-arc-50epochs",
+    # Early stopping parameters
+    "patience": 5,  # Number of epochs with no improvement
+    "min_delta": 0.001,  # Minimum change to qualify as improvement
+    "monitor": "val_loss",  # Metric to monitor
 }
+
+class EarlyStopping:
+    def __init__(self, patience=3, min_delta=0, monitor="val_loss"):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.monitor = monitor
+        self.best_score = None
+        self.counter = 0
+        self.best_model_weights = None
+        self.early_stop = False
+    
+    def __call__(self, model, metrics):
+        score = metrics[self.monitor]
+        
+        if self.best_score is None:
+            self.best_score = score
+            self.save_checkpoint(model)
+            return False
+        
+        if self.monitor == "val_loss":
+            # For loss metrics, lower is better
+            if score < self.best_score - self.min_delta:
+                self.best_score = score
+                self.counter = 0
+                self.save_checkpoint(model)
+            else:
+                self.counter += 1
+        else:
+            # For other metrics (accuracy, f1), higher is better
+            if score > self.best_score + self.min_delta:
+                self.best_score = score
+                self.counter = 0
+                self.save_checkpoint(model)
+            else:
+                self.counter += 1
+        
+        if self.counter >= self.patience:
+            self.early_stop = True
+        
+        return self.early_stop
+    
+    def save_checkpoint(self, model):
+        self.best_model_weights = model.state_dict().copy()
+    
+    def load_best_model(self, model):
+        model.load_state_dict(self.best_model_weights)
 
 def main():
     wandb.init(project=CONFIG["project"], config=CONFIG, name=CONFIG["name"])
@@ -31,6 +80,7 @@ def main():
 
     class_names = ["Angry", "Disgust", "Fear",
                    "Happy", "Sad", "Surprise", "Neutral"]
+    
     f1_history = []
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -46,13 +96,20 @@ def main():
     )
     train_loader, val_loader = loaders["train"], loaders["val"]
 
-    model = SimpleClassifier(num_classes=7).to(device)
+    model = EfficientNetV2Classifier(num_classes=7).to(device)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
     optimizer = AdamW(model.parameters(), lr=CONFIG["lr"])
     scheduler = CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
     scaler = GradScaler()
+    
+    # # Initialize early stopping
+    # early_stopping = EarlyStopping(
+    #     patience=CONFIG["patience"],
+    #     min_delta=CONFIG["min_delta"],
+    #     monitor=CONFIG["monitor"]
+    # )
 
     print("starting loop...")
     for epoch in range(1, CONFIG["epochs"] + 1):
@@ -108,17 +165,25 @@ def main():
             "train/accuracy": train_acc,
             "val/loss": val_loss,
             "val/accuracy": val_acc,
+            "val/f1": f1
         })
 
         print(f"Epoch {epoch:02d} | "
               f"Train loss {train_loss:.4f}, acc {train_acc:.4f} | "
               f"Val loss {val_loss:.4f}, acc {val_acc:.4f}")
+        
+        # metrics = {"val_loss": val_loss, "val_acc": val_acc, "val_f1": f1}
+        # if early_stopping(model, metrics):
+        #     print(f"Early stopping triggered after {epoch} epochs")
+        #     break
 
+    # early_stopping.load_best_model(model)
+    
     f1_history_np = np.stack(f1_history)
     plot_f1_history(f1_history_np, class_names)
 
     torch.save(model.state_dict(), CONFIG["save_path"])
-    print(f"Model saved to {CONFIG['save_path']}")
+    print(f"Best model saved to {CONFIG['save_path']}")
 
 
 def evaluate_model(model, dataloader, device, criterion):
