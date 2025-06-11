@@ -49,7 +49,7 @@ def evaluate_model(model, dataloader, device, criterion):
     y_true = np.concatenate(all_labels)
     y_pred = np.concatenate(all_preds)
     cm = confusion_matrix(y_true, y_pred)
-    f1 = f1_score(y_true, y_pred, zero_division=0)
+    f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
     report = classification_report(y_true, y_pred, digits=3, zero_division=0)
     return cm, f1, report, val_loss, val_correct, val_total
 
