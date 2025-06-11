@@ -6,12 +6,12 @@ import numpy as np
 import wandb
 from facexpr.data.load_data import make_dataloaders
 from facexpr.efficientnet.model import EfficientNetV2Classifier
-from torch.optim.lr_scheduler import OneCycleLR
+from facexpr.efficientnet.model_simple import SimpleClassifier
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from facexpr.utils.visualization import plot_confusion_matrix, plot_f1_history
 from sklearn.metrics import confusion_matrix, classification_report, f1_score
 from torch.amp import autocast, GradScaler
 from torch.optim import AdamW
-# from lion_pytorch import Lion
 
 CONFIG = {
     "data_dir": "./data/downloaded_data/data",
@@ -21,7 +21,7 @@ CONFIG = {
     "save_path": "./outputs/models/model.pth",
     "img_size": 224,
     "project": "fer2013-efficientnetv2",
-    "name": "7-cbam-arc-adamw"
+    "name": "test-simpleclassifier"
 }
 
 def main():
@@ -46,13 +46,12 @@ def main():
     )
     train_loader, val_loader = loaders["train"], loaders["val"]
 
-    model = EfficientNetV2Classifier(num_classes=7).to(device)
+    model = SimpleClassifier(num_classes=7).to(device)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
     optimizer = AdamW(model.parameters(), lr=CONFIG["lr"])
-    scheduler = OneCycleLR(optimizer, max_lr=3e-4, steps_per_epoch=len(train_loader),
-                           epochs=CONFIG["epochs"], pct_start=0.3, div_factor=25, final_div_factor=1e4)
+    scheduler = CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
     scaler = GradScaler()
 
     print("starting loop...")
@@ -74,17 +73,20 @@ def main():
             torch.nn.utils.clip_grad_norm_(
                 model.parameters(),
                 max_norm=1.0,
-                error_if_nonfinite=True
+                error_if_nonfinite=False
             )
             scaler.step(optimizer)
-            scaler.update()
-            scheduler.step()
+            scaler.update()        
 
-            train_loss += loss.item() * imgs.size(0)
-            preds = outputs.argmax(dim=1)
+            with torch.no_grad():
+                raw_logits = model(imgs)
+            preds = raw_logits.argmax(dim=1)
+
+            train_loss += loss.item() * imgs.size(0)            
             train_correct += (preds == labels).sum().item()
             train_total += labels.size(0)
 
+        scheduler.step()
         train_loss /= train_total
         train_acc = train_correct / train_total
 
