@@ -5,20 +5,25 @@ import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import wandb
 from facexpr.data.load_data import make_dataloaders
-from facexpr.models.resnet import ResNet50Classifier
+from facexpr.efficientnet.model import EfficientNetV2Classifier
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from sklearn.metrics import confusion_matrix, classification_report, f1_score
 
-# Replace argparse with a simple CONFIG dictionary
+
 CONFIG = {
-    "data_dir": "/path/to/data/downloaded_data",  # <-- set your path here
+    "data_dir": "./data/downloaded_data/data",
     "batch_size": 32,
     "epochs": 10,
     "lr": 1e-3,
-    "save_path": "outputs/models/model.pth",
-    "log_dir": "outputs/logs"
+    "save_path": "./outputs/models/model.pth",
+    "log_dir": "./outputs/logs",
+    "img_size": 224,
+    "project": "fer2013-efficientnetv2",
+    "name": "2-better-augments-classifier"
 }
+
 
 def evaluate_model(model, dataloader, device, criterion):
     model.eval()
@@ -48,76 +53,74 @@ def evaluate_model(model, dataloader, device, criterion):
     report = classification_report(y_true, y_pred, digits=3)
     return cm, f1, report, val_loss, val_correct, val_total
 
-def plot_confusion_matrix(cm, epoch, log_dir, class_names=None):
-    plt.figure(figsize=(7,6))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", 
+
+def plot_confusion_matrix(cm, epoch, class_names=None):
+    plt.figure(figsize=(7, 6))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
                 xticklabels=class_names, yticklabels=class_names)
     plt.xlabel("Predicted label")
     plt.ylabel("True label")
     plt.title(f"Confusion Matrix (Epoch {epoch})")
-    fname = os.path.join(log_dir, f"confusion_matrix_epoch_{epoch:02d}.png")
     plt.tight_layout()
-    plt.savefig(fname)
+
+    wandb.log({f"confusion_matrix/epoch_{epoch}": wandb.Image(plt)})
     plt.close()
 
-def plot_f1_history(f1_history, log_dir, class_names=None):
+
+def plot_f1_history(f1_history, class_names=None):
     epochs = np.arange(1, len(f1_history) + 1)
-    plt.figure(figsize=(10,6))
+    plt.figure(figsize=(10, 6))
     for class_idx in range(f1_history.shape[1]):
-        plt.plot(epochs, f1_history[:,class_idx], label=f"{class_names[class_idx] if class_names else 'Class '+str(class_idx)}")
+        plt.plot(epochs, f1_history[:, class_idx],
+                 label=f"{class_names[class_idx] if class_names else 'Class '+str(class_idx)}")
     plt.xlabel("Epoch")
     plt.ylabel("F1-score")
     plt.title("Per-class F1-score over epochs")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(log_dir, "f1_per_class_history.png"))
+
+    wandb.log({"f1_history": wandb.Image(plt)})
     plt.close()
 
+
 def main():
-    args = CONFIG
+    wandb.init(project=CONFIG["project"],
+               entity=CONFIG["entity"], config=CONFIG)
 
-    os.makedirs(os.path.dirname(args["save_path"]), exist_ok=True)
-    os.makedirs(os.path.dirname(args["log_dir"]), exist_ok=True)
+    os.makedirs(os.path.dirname(CONFIG["save_path"]), exist_ok=True)
+    os.makedirs(CONFIG["log_dir"], exist_ok=True)
 
-    class_names = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
+    class_names = ["Angry", "Disgust", "Fear",
+                   "Happy", "Sad", "Surprise", "Neutral"]
     f1_history = []
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    #target size 224 for resnet
-    target_size = 224
+    print("loading data...")
     loaders = make_dataloaders(
-        data_dir=args["data_dir"],
-        batch_size=args["batch_size"],
-        img_size=target_size,
+        data_dir=CONFIG["data_dir"],
+        batch_size=CONFIG["batch_size"],
+        img_size=CONFIG['img_size'],
         num_workers=2,
         augment=True,
-        channels=3
+        grayscale=False
     )
     train_loader, val_loader = loaders["train"], loaders["val"]
 
-    model = ResNet50Classifier(num_classes=7, pretrained=True).to(device)
+    model = EfficientNetV2Classifier(num_classes=7).to(device)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-    optimizer = optim.AdamW(model.parameters(), lr=args["lr"])
-    scheduler = CosineAnnealingLR(optimizer, T_max=args["epochs"])
+    optimizer = optim.AdamW(model.parameters(), lr=CONFIG["lr"])
+    scheduler = CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
 
-    # freeze parameters of resnet
     for param in model.backbone.parameters():
         param.requires_grad = False
-    for name, param in model.backbone.named_parameters():
-        if name.startswith("layer4") or name.startswith("fc"):
-            param.requires_grad = True
 
-    for epoch in range(1, args["epochs"] + 1):
+    print("starting loop...")
+    for epoch in range(1, CONFIG["epochs"] + 1):
         model.train()
         train_loss = 0.0
         train_correct = train_total = 0
-
-        #unfreeze some - 'gradual unfreeze'
-        if epoch == args["epochs"] // 2:
-            for param in model.backbone.layer3.parameters():
-                param.requires_grad = True
 
         for imgs, labels in train_loader:
             imgs, labels = imgs.to(device), labels.to(device)
@@ -125,7 +128,7 @@ def main():
             outputs = model(imgs)
             loss = criterion(outputs, labels)
             loss.backward()
-            optimizer.step()            
+            optimizer.step()
 
             train_loss += loss.item() * imgs.size(0)
             preds = outputs.argmax(dim=1)
@@ -137,28 +140,36 @@ def main():
         train_loss /= train_total
         train_acc = train_correct / train_total
 
-        cm, f1, report, val_loss, val_correct, val_total = evaluate_model(model, val_loader, device, criterion)
-
-        f1_history.append(f1)
-        plot_confusion_matrix(cm, epoch, args["log_dir"], class_names)
-
+        cm, f1, report, val_loss, val_correct, val_total = evaluate_model(
+            model, val_loader, device, criterion)
         val_loss /= val_total
         val_acc = val_correct / val_total
 
-        all_report_path = os.path.join(args["log_dir"], "classification_reports.txt")
-        with open(all_report_path, "a") as f:
-            f.write(f"\n==== Epoch {epoch:02d} ====\n")
-            f.write(report)
+        f1_history.append(f1)
+        plot_confusion_matrix(cm, epoch, CONFIG["log_dir"], class_names)
+
+        wandb.log({
+            f"classification_report/epoch_{epoch}": wandb.Table(
+                data=[[line] for line in report.split("\n")], columns=["report"])})
+
+        wandb.log({
+            "epoch": epoch,
+            "train/loss": train_loss,
+            "train/accuracy": train_acc,
+            "val/loss": val_loss,
+            "val/accuracy": val_acc,
+        })
 
         print(f"Epoch {epoch:02d} | "
               f"Train loss {train_loss:.4f}, acc {train_acc:.4f} | "
               f"Val loss {val_loss:.4f}, acc {val_acc:.4f}")
 
-    torch.save(model.state_dict(), args["save_path"])
-    print(f"Model saved to {args['save_path']}")
-
     f1_history_np = np.stack(f1_history)
-    plot_f1_history(f1_history_np, args["log_dir"], class_names)
+    plot_f1_history(f1_history_np, CONFIG["log_dir"], class_names)
+
+    torch.save(model.state_dict(), CONFIG["save_path"])
+    print(f"Model saved to {CONFIG['save_path']}")
+
 
 if __name__ == "__main__":
     main()
