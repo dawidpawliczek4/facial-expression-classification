@@ -3,14 +3,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import wandb
 from facexpr.data.load_data import make_dataloaders
 from facexpr.efficientnet.model import EfficientNetV2Classifier
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from facexpr.utils.visualization import plot_confusion_matrix, plot_f1_history
 from sklearn.metrics import confusion_matrix, classification_report, f1_score
-
+from torch.amp import autocast, GradScaler
+from lion_pytorch import Lion 
 
 CONFIG = {
     "data_dir": "./data/downloaded_data/data",
@@ -18,85 +18,15 @@ CONFIG = {
     "epochs": 10,
     "lr": 1e-3,
     "save_path": "./outputs/models/model.pth",
-    "log_dir": "./outputs/logs",
     "img_size": 224,
     "project": "fer2013-efficientnetv2",
-    "name": "2-better-augments-classifier"
+    "name": "5-lion-scaler-clipnorm"
 }
-
-
-def evaluate_model(model, dataloader, device, criterion):
-    model.eval()
-    all_preds = []
-    all_labels = []
-    val_loss = 0
-    val_correct = 0
-    val_total = 0
-    with torch.no_grad():
-        for imgs, labels in dataloader:
-            imgs, labels = imgs.to(device), labels.to(device)
-            outputs = model(imgs)
-
-            loss = criterion(outputs, labels)
-            val_loss += loss.item() * imgs.size(0)
-            preds = outputs.argmax(dim=1)
-            val_correct += (preds == labels).sum().item()
-            val_total += labels.size(0)
-
-            all_preds.append(preds.cpu().numpy())
-            all_labels.append(labels.cpu().numpy())
-
-    y_true = np.concatenate(all_labels)
-    y_pred = np.concatenate(all_preds)
-    cm = confusion_matrix(y_true, y_pred)
-    f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
-    report = classification_report(y_true, y_pred, digits=3, zero_division=0)
-    return cm, f1, report, val_loss, val_correct, val_total
-
-
-def plot_confusion_matrix(cm, epoch, class_names=None):
-    plt.figure(figsize=(7, 6))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
-                xticklabels=class_names, yticklabels=class_names)
-    plt.xlabel("Predicted label")
-    plt.ylabel("True label")
-    plt.title(f"Confusion Matrix (Epoch {epoch})")
-    plt.tight_layout()
-
-    wandb.log({f"confusion_matrix/epoch_{epoch}": wandb.Image(plt)})
-    plt.close()
-
-
-def plot_f1_history(f1_history, class_names=None):
-    epochs = np.arange(1, f1_history.shape[0] + 1)
-    plt.figure(figsize=(10, 6))
-    if f1_history.ndim == 1:
-        # Jedna krzywa (macro-F1)
-        plt.plot(epochs, f1_history, marker='o', label='Macro F1')
-    else:
-        # Per-class
-        for class_idx in range(f1_history.shape[1]):
-            plt.plot(
-                epochs,
-                f1_history[:, class_idx],
-                marker='o',
-                label=(class_names[class_idx] if class_names else f"Class {class_idx}")
-            )
-    plt.xlabel("Epoch")
-    plt.ylabel("F1-score")
-    plt.title("Per-class F1-score over epochs")
-    plt.legend()
-    plt.tight_layout()
-
-    wandb.log({"f1_history": wandb.Image(plt)})
-    plt.close()
-
 
 def main():
     wandb.init(project=CONFIG["project"], config=CONFIG, name=CONFIG["name"])
 
     os.makedirs(os.path.dirname(CONFIG["save_path"]), exist_ok=True)
-    os.makedirs(CONFIG["log_dir"], exist_ok=True)
 
     class_names = ["Angry", "Disgust", "Fear",
                    "Happy", "Sad", "Surprise", "Neutral"]
@@ -118,17 +48,9 @@ def main():
     model = EfficientNetV2Classifier(num_classes=7).to(device)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-    optimizer = optim.AdamW(model.parameters(), lr=CONFIG["lr"])
+    optimizer = Lion(model.parameters(), lr=CONFIG["lr"], weight_decay=1e-2)
     scheduler = CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
-
-    for param in model.backbone.parameters():
-        param.requires_grad = False
-    
-    
-    
-    for name, param in model.backbone.named_parameters():    
-        if name.startswith("features.6") or name.startswith("features.7"):
-            param.requires_grad = True
+    scaler = GradScaler()
 
     print("starting loop...")
     for epoch in range(1, CONFIG["epochs"] + 1):
@@ -139,10 +61,19 @@ def main():
         for imgs, labels in train_loader:
             imgs, labels = imgs.to(device), labels.to(device)
             optimizer.zero_grad()
-            outputs = model(imgs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+
+            with autocast('cuda', dtype=torch.bfloat16):
+                outputs = model(imgs)
+                loss = criterion(outputs, labels)
+            
+            scaler.scale(loss).backward()
+            torch.nn.utils.clip_grad_norm_(
+                model.parameters(), 
+                max_norm=1.0,
+                error_if_nonfinite=True
+            )
+            scaler.step(optimizer)
+            scaler.update()
 
             train_loss += loss.item() * imgs.size(0)
             preds = outputs.argmax(dim=1)
@@ -184,6 +115,36 @@ def main():
     torch.save(model.state_dict(), CONFIG["save_path"])
     print(f"Model saved to {CONFIG['save_path']}")
 
+def evaluate_model(model, dataloader, device, criterion):
+    model.eval()
+    all_preds = []
+    all_labels = []
+    val_loss = 0
+    val_correct = 0
+    val_total = 0
+    with torch.no_grad():
+        for imgs, labels in dataloader:
+            imgs, labels = imgs.to(device), labels.to(device)
+            outputs = model(imgs)
+
+            loss = criterion(outputs, labels)
+            val_loss += loss.item() * imgs.size(0)
+            preds = outputs.argmax(dim=1)
+            val_correct += (preds == labels).sum().item()
+            val_total += labels.size(0)
+
+            all_preds.append(preds.cpu().numpy())
+            all_labels.append(labels.cpu().numpy())
+
+    y_true = np.concatenate(all_labels)
+    y_pred = np.concatenate(all_preds)
+    cm = confusion_matrix(y_true, y_pred)
+    f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
+    report = classification_report(y_true, y_pred, digits=3, zero_division=0)
+    return cm, f1, report, val_loss, val_correct, val_total
+
 
 if __name__ == "__main__":
     main()
+
+

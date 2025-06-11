@@ -540,6 +540,21 @@ files = [
 ]
 
 [[package]]
+name = "lion-pytorch"
+version = "0.2.3"
+description = "Lion Optimizer - Pytorch"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "lion_pytorch-0.2.3-py3-none-any.whl", hash = "sha256:a1f0cb6ddb46c1f5e130b985d2759c33c178195ef88b216621cb4177c6284f81"},
+    {file = "lion_pytorch-0.2.3.tar.gz", hash = "sha256:42ba117ce857e9dd6c67c727e22e575671fd72e441900af137b05e7ee5c8fd88"},
+]
+
+[package.dependencies]
+torch = ">=1.6"
+
+[[package]]
 name = "markupsafe"
 version = "3.0.2"
 description = "Safely add untrusted strings to HTML/XML markup."
@@ -2130,4 +2145,4 @@ workspaces = ["wandb-workspaces"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11.13"
-content-hash = "fad51699b32a01fc84c1d6094d60fc229aa68ae6f4fa1a68bb8f4052741156d5"
+content-hash = "735bedb4cefb191587b32f277a6186e2848a0ad25ffa4189b8c5cdf8fa91eff4"
