@@ -10,7 +10,7 @@ class EfficientNetV2Classifier(nn.Module):
         num_classes (int): Number of target emotion classes.
     """
 
-    def __init__(self, num_classes: int = 7, dropout=0.3):
+    def __init__(self, num_classes: int = 7, dropout=0.2):
         super(EfficientNetV2Classifier, self).__init__()
 
         self.backbone = efficientnet_v2_s(
@@ -30,8 +30,6 @@ class EfficientNetV2Classifier(nn.Module):
         )
 
     def forward(self, x):
-        # Extract features using the backbone
         features = self.backbone(x)
-        # Pass through our custom classifier
         output = self.classifier(features)
         return output
