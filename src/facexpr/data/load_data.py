@@ -43,12 +43,11 @@ def make_dataloaders(
     if augment:
         train_tfms += [
             transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomRotation(20, resample=False, expand=False, center=None),
+            transforms.RandomRotation(20, expand=False, center=None),
             transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.1),
-            transforms.RandAugment(num_ops=3, magnitude=9),
+            # transforms.RandAugment(num_ops=3, magnitude=9),
             transforms.RandomPerspective(distortion_scale=0.4, p=0.5),
             transforms.GaussianBlur(kernel_size=(3, 3), sigma=(0.1, 2.0)),
-            transforms.RandomErasing(p=0.5, scale=(0.02, 0.2), ratio=(0.3, 3.3))
         ]                                    
 
     train_tfms += common_tfms + [normalize]

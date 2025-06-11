@@ -49,8 +49,8 @@ def evaluate_model(model, dataloader, device, criterion):
     y_true = np.concatenate(all_labels)
     y_pred = np.concatenate(all_preds)
     cm = confusion_matrix(y_true, y_pred)
-    f1 = f1_score(y_true, y_pred, average='macro')
-    report = classification_report(y_true, y_pred, digits=3)
+    f1 = f1_score(y_true, y_pred, zero_division=0)
+    report = classification_report(y_true, y_pred, digits=3, zero_division=0)
     return cm, f1, report, val_loss, val_correct, val_total
 
 
@@ -68,11 +68,20 @@ def plot_confusion_matrix(cm, epoch, class_names=None):
 
 
 def plot_f1_history(f1_history, class_names=None):
-    epochs = np.arange(1, len(f1_history) + 1)
+    epochs = np.arange(1, f1_history.shape[0] + 1)
     plt.figure(figsize=(10, 6))
-    for class_idx in range(f1_history.shape[1]):
-        plt.plot(epochs, f1_history[:, class_idx],
-                 label=f"{class_names[class_idx] if class_names else 'Class '+str(class_idx)}")
+    if f1_history.ndim == 1:
+        # Jedna krzywa (macro-F1)
+        plt.plot(epochs, f1_history, marker='o', label='Macro F1')
+    else:
+        # Per-class
+        for class_idx in range(f1_history.shape[1]):
+            plt.plot(
+                epochs,
+                f1_history[:, class_idx],
+                marker='o',
+                label=(class_names[class_idx] if class_names else f"Class {class_idx}")
+            )
     plt.xlabel("Epoch")
     plt.ylabel("F1-score")
     plt.title("Per-class F1-score over epochs")
@@ -84,8 +93,7 @@ def plot_f1_history(f1_history, class_names=None):
 
 
 def main():
-    wandb.init(project=CONFIG["project"],
-               entity=CONFIG["entity"], config=CONFIG)
+    wandb.init(project=CONFIG["project"], config=CONFIG, name=CONFIG["name"])
 
     os.makedirs(os.path.dirname(CONFIG["save_path"]), exist_ok=True)
     os.makedirs(CONFIG["log_dir"], exist_ok=True)
@@ -115,6 +123,10 @@ def main():
 
     for param in model.backbone.parameters():
         param.requires_grad = False
+    for name, param in model.backbone.named_parameters():
+        if 'blocks.7' in name:  # ostatni block EfficientNetV2
+            param.requires_grad = True
+
 
     print("starting loop...")
     for epoch in range(1, CONFIG["epochs"] + 1):
@@ -146,7 +158,7 @@ def main():
         val_acc = val_correct / val_total
 
         f1_history.append(f1)
-        plot_confusion_matrix(cm, epoch, CONFIG["log_dir"], class_names)
+        plot_confusion_matrix(cm, epoch, class_names)
 
         wandb.log({
             f"classification_report/epoch_{epoch}": wandb.Table(
@@ -165,7 +177,7 @@ def main():
               f"Val loss {val_loss:.4f}, acc {val_acc:.4f}")
 
     f1_history_np = np.stack(f1_history)
-    plot_f1_history(f1_history_np, CONFIG["log_dir"], class_names)
+    plot_f1_history(f1_history_np, class_names)
 
     torch.save(model.state_dict(), CONFIG["save_path"])
     print(f"Model saved to {CONFIG['save_path']}")
