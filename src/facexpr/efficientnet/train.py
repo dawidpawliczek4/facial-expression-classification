@@ -9,18 +9,18 @@ from facexpr.efficientnet.model import EfficientNetV2Classifier
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from facexpr.utils.visualization import plot_confusion_matrix, plot_f1_history
 from sklearn.metrics import confusion_matrix, classification_report, f1_score
-from torch.amp import autocast, GradScaler
-from lion_pytorch import Lion 
+# from torch.amp import autocast, GradScaler
+# from lion_pytorch import Lion 
 
 CONFIG = {
     "data_dir": "./data/downloaded_data/data",
     "batch_size": 32,
-    "epochs": 10,
+    "epochs": 5,
     "lr": 1e-3,
     "save_path": "./outputs/models/model.pth",
     "img_size": 224,
     "project": "fer2013-efficientnetv2",
-    "name": "5-lion-scaler-clipnorm"
+    "name": "6-cbam"
 }
 
 def main():
@@ -47,10 +47,13 @@ def main():
 
     model = EfficientNetV2Classifier(num_classes=7).to(device)
 
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-    optimizer = Lion(model.parameters(), lr=CONFIG["lr"], weight_decay=1e-2)
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)    
+    optimizer = optim.AdamW(model.parameters(), lr=CONFIG["lr"])
     scheduler = CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
-    scaler = GradScaler()
+
+    # TODO:
+    # optimizer = Lion(model.parameters(), lr=CONFIG["lr"], weight_decay=1e-2)
+    # scaler = GradScaler()
 
     print("starting loop...")
     for epoch in range(1, CONFIG["epochs"] + 1):
@@ -62,18 +65,19 @@ def main():
             imgs, labels = imgs.to(device), labels.to(device)
             optimizer.zero_grad()
 
-            with autocast('cuda', dtype=torch.bfloat16):
-                outputs = model(imgs)
-                loss = criterion(outputs, labels)
+            # with autocast('cuda', dtype=torch.bfloat16):
+            outputs = model(imgs)
+            loss = criterion(outputs, labels)
             
-            scaler.scale(loss).backward()
+            # scaler.scale(loss).backward()
             torch.nn.utils.clip_grad_norm_(
                 model.parameters(), 
                 max_norm=1.0,
                 error_if_nonfinite=True
             )
-            scaler.step(optimizer)
-            scaler.update()
+            # scaler.step(optimizer)
+            # scaler.update()
+            optimizer.step()
 
             train_loss += loss.item() * imgs.size(0)
             preds = outputs.argmax(dim=1)
