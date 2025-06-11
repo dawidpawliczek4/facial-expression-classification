@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from facexpr.data.load_data import make_dataloaders
-from facexpr.models.cnn import SimpleCnnModel
+from facexpr.simple_cnn.cnn import SimpleCnnModel
 
 def train():
     # TODO: train better CNN, cuz that's shit.

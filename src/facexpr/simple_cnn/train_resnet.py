@@ -49,7 +49,7 @@ def evaluate_model(model, dataloader, device, criterion):
     return cm, f1, report, val_loss, val_correct, val_total
 
 def plot_confusion_matrix(cm, epoch, log_dir, class_names=None):
-    plt.figure(figsize=(7,6))
+    plt.figure(figsize=(7, 6))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", 
                 xticklabels=class_names, yticklabels=class_names)
     plt.xlabel("Predicted label")
@@ -62,7 +62,7 @@ def plot_confusion_matrix(cm, epoch, log_dir, class_names=None):
 
 def plot_f1_history(f1_history, log_dir, class_names=None):
     epochs = np.arange(1, len(f1_history) + 1)
-    plt.figure(figsize=(10,6))
+    plt.figure(figsize=(10, 6))
     for class_idx in range(f1_history.shape[1]):
         plt.plot(epochs, f1_history[:,class_idx], label=f"{class_names[class_idx] if class_names else 'Class '+str(class_idx)}")
     plt.xlabel("Epoch")

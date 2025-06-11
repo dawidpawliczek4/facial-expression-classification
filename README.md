@@ -16,10 +16,10 @@ This repository contains all the code, documentation, and resources for a facial
 
 Key components:
 
-- Data ingestion and preprocessing pipeline
-- CNN architecture design and training scripts
-- Model evaluation and visualization tools
-- This project was developed as part of a university course on neural networks and deep learning.
+* Data ingestion and preprocessing pipeline
+* CNN architecture design and training scripts
+* Model evaluation and visualization tools
+* This project was developed as part of a university course on neural networks and deep learning.
 
 ---
 
@@ -58,7 +58,7 @@ After you’ve cloned the repo, you need to:
 
 1. **Install Poetry (if you don’t already have it).**
 
-   ```
+   ```bash
    curl -sSL https://install.python-poetry.org | python3 -
    ```
 
@@ -81,7 +81,7 @@ After you’ve cloned the repo, you need to:
    * Create (or reuse) a virtual environment under Poetry’s control.
    * Read `pyproject.toml` and `poetry.lock` and install exactly the versions you specified (e.g. NumPy, etc.).
 
-4. **Activate the virtualenv shell** 
+4. **Activate the virtualenv shell**
 
    ```bash
    poetry env activate
