@@ -15,7 +15,7 @@ from sklearn.metrics import confusion_matrix, classification_report, f1_score
 CONFIG = {
     "data_dir": "./data/downloaded_data/data",
     "batch_size": 32,
-    "epochs": 10,
+    "epochs": 5,
     "lr": 1e-3,
     "save_path": "./outputs/models/model.pth",
     "img_size": 224,
