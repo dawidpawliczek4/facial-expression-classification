@@ -123,10 +123,12 @@ def main():
 
     for param in model.backbone.parameters():
         param.requires_grad = False
-    for name, param in model.backbone.named_parameters():
-        if 'blocks.7' in name:  # ostatni block EfficientNetV2
+    
+    
+    
+    for name, param in model.backbone.named_parameters():    
+        if name.startswith("features.6") or name.startswith("features.7"):
             param.requires_grad = True
-
 
     print("starting loop...")
     for epoch in range(1, CONFIG["epochs"] + 1):
