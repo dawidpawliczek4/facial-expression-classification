@@ -10,10 +10,12 @@ class ArcMarginProduct(nn.Module):
         nn.init.xavier_uniform_(self.weight)
         self.s, self.m = s, m
 
-    def forward(self, x, labels):
+    def forward(self, x, labels=None):
         # Normalize feature i weights
         cosine = F.linear(F.normalize(x), F.normalize(self.weight))
         # kątowanie
+        if labels is None:
+            return cosine * self.s
         theta = torch.acos(torch.clamp(cosine, -1.0, 1.0))
         # tylko dla prawdziwych klas dodaj margines
         target_logits = torch.cos(theta + self.m)
@@ -88,7 +90,7 @@ class EfficientNetV2Classifier(nn.Module):
 
         backbone = efficientnet_v2_s(
             weights=EfficientNet_V2_S_Weights.DEFAULT)        
-        in_feats = self.backbone.classifier[1].in_features  # 1280
+        in_feats = backbone.classifier[1].in_features  # 1280
 
         self.features = backbone.features
         self.avgpool = backbone.avgpool
