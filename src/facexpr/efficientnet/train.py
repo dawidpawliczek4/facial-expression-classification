@@ -49,7 +49,7 @@ def evaluate_model(model, dataloader, device, criterion):
     y_true = np.concatenate(all_labels)
     y_pred = np.concatenate(all_preds)
     cm = confusion_matrix(y_true, y_pred)
-    f1 = f1_score(y_true, y_pred, zero_division=0)
+    f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
     report = classification_report(y_true, y_pred, digits=3, zero_division=0)
     return cm, f1, report, val_loss, val_correct, val_total
 
@@ -123,10 +123,12 @@ def main():
 
     for param in model.backbone.parameters():
         param.requires_grad = False
-    for name, param in model.backbone.named_parameters():
-        if 'blocks.7' in name:  # ostatni block EfficientNetV2
+    
+    
+    
+    for name, param in model.backbone.named_parameters():    
+        if name.startswith("features.6") or name.startswith("features.7"):
             param.requires_grad = True
-
 
     print("starting loop...")
     for epoch in range(1, CONFIG["epochs"] + 1):
