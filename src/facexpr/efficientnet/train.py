@@ -6,6 +6,7 @@ import numpy as np
 import wandb
 from facexpr.data.load_data import make_dataloaders
 from facexpr.efficientnet.model import EfficientNetV2Classifier
+from facexpr.efficientnet.model_simple import SimpleClassifier
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from facexpr.utils.visualization import plot_confusion_matrix, plot_f1_history
 from sklearn.metrics import confusion_matrix, classification_report, f1_score
@@ -20,7 +21,7 @@ CONFIG = {
     "save_path": "./outputs/models/model.pth",
     "img_size": 224,
     "project": "fer2013-efficientnetv2",
-    "name": "7-cbam-arc-adamw"
+    "name": "test-simpleclassifier"
 }
 
 def main():
@@ -45,7 +46,7 @@ def main():
     )
     train_loader, val_loader = loaders["train"], loaders["val"]
 
-    model = EfficientNetV2Classifier(num_classes=7).to(device)
+    model = SimpleClassifier(num_classes=7).to(device)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
