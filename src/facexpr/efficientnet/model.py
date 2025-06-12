@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 from torchvision.models import efficientnet_v2_s, EfficientNet_V2_S_Weights
 
+# TODO: arcface
 # class ArcMarginProduct(nn.Module):
 #     def __init__(self, in_features, out_features, s=30.0, m=0.50):
 #         super().__init__()
@@ -92,7 +93,17 @@ class EfficientNetV2Classifier(nn.Module):
             weights=EfficientNet_V2_S_Weights.DEFAULT)        
         in_feats = backbone.classifier[1].in_features  # 1280
 
-        self.features = backbone.features
+        #inject CBAM into backbone
+        new_features = []
+        stage_last = {1: 24, 3: 48, 6: 64, 10: 128, 15: 160, 18: 256}
+        for i, block in enumerate(backbone.features):
+            print(i, block)
+            new_features.append(block)
+            if i in stage_last:
+                new_features.append(CBAM(stage_last[i], ratio=16))
+
+        self.features = nn.Sequential(*new_features)
+
         self.avgpool = backbone.avgpool
         self.cbam = CBAM(in_planes=in_feats, ratio=16, kernel_size=7)
         self.pre_mlp = nn.Sequential(

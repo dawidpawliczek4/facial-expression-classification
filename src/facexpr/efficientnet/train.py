@@ -10,7 +10,7 @@ from facexpr.utils.visualization import plot_confusion_matrix, plot_f1_history
 from sklearn.metrics import confusion_matrix, classification_report, f1_score
 from torch.amp import autocast, GradScaler
 from torch.optim import AdamW
-from facexpr.efficientnet.early_stopping import EarlyStopping
+from facexpr.utils.early_stopping import EarlyStopping
 
 CONFIG = {
     "data_dir": "./data/downloaded_data/data",
@@ -20,7 +20,7 @@ CONFIG = {
     "save_path": "./outputs/models/model.pth",
     "img_size": 224,
     "project": "fer2013-efficientnetv2",
-    "name": "8-cbam-arc-50epochs",
+    "name": "10-cbam-injected",
 
     # Early stopping parameters
     "patience": 5,
