@@ -1,30 +1,37 @@
 import torch.nn as nn
 import torch
-import torch.nn.functional as F
 from torchvision.models import efficientnet_v2_s, EfficientNet_V2_S_Weights
 
-# TODO: arcface
-# class ArcMarginProduct(nn.Module):
-#     def __init__(self, in_features, out_features, s=30.0, m=0.50):
-#         super().__init__()
-#         self.weight = nn.Parameter(torch.FloatTensor(out_features, in_features))
-#         nn.init.xavier_uniform_(self.weight)
-#         self.s, self.m = s, m
+class SelfAttention2d(nn.Module):
+    """
+    Non-local self-attention blok 2D:
+    - query/key/value poprzez 1×1 conv
+    - attention map między wszystkimi pozycjami przestrzennymi
+    - residual z uczonym skalarem gamma
+    """
+    def __init__(self, in_dim):
+        super().__init__()
+        self.in_dim = in_dim
+        self.query_conv = nn.Conv2d(in_dim, in_dim // 8, kernel_size=1)
+        self.key_conv   = nn.Conv2d(in_dim, in_dim // 8, kernel_size=1)
+        self.value_conv = nn.Conv2d(in_dim, in_dim,       kernel_size=1)
+        self.gamma = nn.Parameter(torch.zeros(1))
+        self.softmax = nn.Softmax(dim=-1)
 
-#     def forward(self, x, labels=None):
-#         # Normalize feature i weights
-#         cosine = F.linear(F.normalize(x), F.normalize(self.weight))
-#         # kątowanie
-#         if labels is None:
-#             return cosine * self.s
-#         theta = torch.acos(torch.clamp(cosine, -1.0, 1.0))
-#         # tylko dla prawdziwych klas dodaj margines
-#         target_logits = torch.cos(theta + self.m)
-#         one_hot = torch.zeros_like(cosine)
-#         one_hot.scatter_(1, labels.view(-1,1), 1.0)
-#         # skaluj i miksuj
-#         output = self.s * (one_hot * target_logits + (1.0 - one_hot) * cosine)
-#         return output
+    def forward(self, x):
+        B, C, H, W = x.size()
+        # projekcja
+        proj_q = self.query_conv(x).view(B, -1, H * W).permute(0, 2, 1)  # B×(H*W)×C'
+        proj_k = self.key_conv(x).view(B, -1, H * W)                     # B×C'×(H*W)
+        # mapa uwagi
+        energy = torch.bmm(proj_q, proj_k)                              # B×(H*W)×(H*W)
+        attn  = self.softmax(energy)                                    # B×N×N
+        # wartość
+        proj_v = self.value_conv(x).view(B, -1, H * W)                  # B×C×N
+        out = torch.bmm(proj_v, attn.permute(0, 2, 1))                  # B×C×N
+        out = out.view(B, C, H, W)
+        # dodajemy residual
+        return self.gamma * out + x
 
 
 class ChannelAttention(nn.Module):
@@ -69,11 +76,18 @@ class CBAM(nn.Module):
         super().__init__()
         self.channel_att = ChannelAttention(in_planes, ratio)
         self.spatial_att = SpatialAttention(kernel_size)
+        # self._init_identity()
+
+    def _init_identity(self):
+        # ustaw wagi = 0, bias = 0  → sigmoid(0)=0.5
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.zeros_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, x):
-        # Channel attention
         x = x * self.channel_att(x)
-        # Spatial attention
         x = x * self.spatial_att(x)
         return x
 
@@ -95,17 +109,19 @@ class EfficientNetV2Classifier(nn.Module):
 
         #inject CBAM into backbone
         new_features = []
-        stage_last = {1: 24, 3: 48, 6: 64, 10: 128, 15: 160, 18: 256}
+        stage_last = { 3: 64, 4:128, 5:160}
         for i, block in enumerate(backbone.features):
-            print(i, block)
             new_features.append(block)
             if i in stage_last:
                 new_features.append(CBAM(stage_last[i], ratio=16))
+                new_features.append(SelfAttention2d(stage_last[i]))
 
         self.features = nn.Sequential(*new_features)
 
-        self.avgpool = backbone.avgpool
         self.cbam = CBAM(in_planes=in_feats, ratio=16, kernel_size=7)
+        self.self_att = SelfAttention2d(in_dim=in_feats)
+
+        self.avgpool = backbone.avgpool        
         self.pre_mlp = nn.Sequential(
             nn.BatchNorm1d(in_feats),
             nn.GELU(),
@@ -114,14 +130,15 @@ class EfficientNetV2Classifier(nn.Module):
             nn.BatchNorm1d(in_feats // 2),
             nn.GELU(),
             nn.Dropout(dropout),
-        )
-        # self.arc = ArcMarginProduct(in_feats // 2, num_classes, s=arc_s, m=arc_m)
+        )        
         self.fc = nn.Linear(in_feats // 2, num_classes)
 
     def forward(self, x):
         x = self.features(x)
         x = self.cbam(x)
-        x = self.avgpool(x)
+        # with torch.amp.autocast(enabled=False):
+        x = self.self_att(x)
+        x = self.avgpool(x)        
         x = torch.flatten(x, 1)
         x = self.pre_mlp(x)        
         logits = self.fc(x)
