@@ -3,27 +3,27 @@ import torch
 import torch.nn.functional as F
 from torchvision.models import efficientnet_v2_s, EfficientNet_V2_S_Weights
 
-class ArcMarginProduct(nn.Module):
-    def __init__(self, in_features, out_features, s=30.0, m=0.50):
-        super().__init__()
-        self.weight = nn.Parameter(torch.FloatTensor(out_features, in_features))
-        nn.init.xavier_uniform_(self.weight)
-        self.s, self.m = s, m
+# class ArcMarginProduct(nn.Module):
+#     def __init__(self, in_features, out_features, s=30.0, m=0.50):
+#         super().__init__()
+#         self.weight = nn.Parameter(torch.FloatTensor(out_features, in_features))
+#         nn.init.xavier_uniform_(self.weight)
+#         self.s, self.m = s, m
 
-    def forward(self, x, labels=None):
-        # Normalize feature i weights
-        cosine = F.linear(F.normalize(x), F.normalize(self.weight))
-        # kątowanie
-        if labels is None:
-            return cosine * self.s
-        theta = torch.acos(torch.clamp(cosine, -1.0, 1.0))
-        # tylko dla prawdziwych klas dodaj margines
-        target_logits = torch.cos(theta + self.m)
-        one_hot = torch.zeros_like(cosine)
-        one_hot.scatter_(1, labels.view(-1,1), 1.0)
-        # skaluj i miksuj
-        output = self.s * (one_hot * target_logits + (1.0 - one_hot) * cosine)
-        return output
+#     def forward(self, x, labels=None):
+#         # Normalize feature i weights
+#         cosine = F.linear(F.normalize(x), F.normalize(self.weight))
+#         # kątowanie
+#         if labels is None:
+#             return cosine * self.s
+#         theta = torch.acos(torch.clamp(cosine, -1.0, 1.0))
+#         # tylko dla prawdziwych klas dodaj margines
+#         target_logits = torch.cos(theta + self.m)
+#         one_hot = torch.zeros_like(cosine)
+#         one_hot.scatter_(1, labels.view(-1,1), 1.0)
+#         # skaluj i miksuj
+#         output = self.s * (one_hot * target_logits + (1.0 - one_hot) * cosine)
+#         return output
 
 
 class ChannelAttention(nn.Module):
@@ -85,7 +85,7 @@ class EfficientNetV2Classifier(nn.Module):
         num_classes (int): Number of target emotion classes.
     """
 
-    def __init__(self, num_classes: int = 7, dropout=0.2, arc_s=30.0, arc_m=0.50):
+    def __init__(self, num_classes: int = 7, dropout=0.2):
         super(EfficientNetV2Classifier, self).__init__()
 
         backbone = efficientnet_v2_s(
@@ -104,13 +104,14 @@ class EfficientNetV2Classifier(nn.Module):
             nn.GELU(),
             nn.Dropout(dropout),
         )
-        self.arc = ArcMarginProduct(in_feats // 2, num_classes, s=arc_s, m=arc_m)
+        # self.arc = ArcMarginProduct(in_feats // 2, num_classes, s=arc_s, m=arc_m)
+        self.fc = nn.Linear(in_feats // 2, num_classes)
 
-    def forward(self, x, labels=None):
+    def forward(self, x):
         x = self.features(x)
         x = self.cbam(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-        x = self.pre_mlp(x)
-        output = self.arc(x, labels)
-        return output
+        x = self.pre_mlp(x)        
+        logits = self.fc(x)
+        return logits
