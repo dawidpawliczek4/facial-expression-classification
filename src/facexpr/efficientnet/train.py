@@ -15,18 +15,27 @@ from facexpr.utils.early_stopping import EarlyStopping
 CONFIG = {
     "data_dir": "./data/downloaded_data/data",
     "batch_size": 64,
-    "epochs": 10,
+    "epochs": 30,
     "lr": 1e-3,
     "save_path": "./outputs/models/model.pth",
     "img_size": 224,
     "project": "fer2013-efficientnetv2",
-    "name": "10-cbam-injected",
+    "name": "15-cbam-mhsa-30epochs",
+    "lr-cbam": 1e-2,
 
     # Early stopping parameters
     "patience": 5,
     "min_delta": 0.001,
     "monitor": "val_loss",
 }
+
+# CUDA optimizations
+torch.backends.cudnn.benchmark = True
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+torch.backends.cudnn.deterministic = True
+torch.backends.cuda.enable_flash_sdp(True)
+torch.backends.cuda.enable_mem_efficient_sdp(True)
 
 def main():
     wandb.init(project=CONFIG["project"], config=CONFIG, name=CONFIG["name"])
@@ -53,10 +62,21 @@ def main():
 
     model = EfficientNetV2Classifier(num_classes=7).to(device)
 
+    def is_cbam_mhsa(name):
+        res = any(tag in name.lower() for tag in ["cbam", "channel_att", "spatial_att", "self_attention", "mhsa", "attention", "att"])
+        return res
+
+    cbam_params = [p for n, p in model.named_parameters() if is_cbam_mhsa(n)]
+    other_params = [p for n, p in model.named_parameters() if not is_cbam_mhsa(n)]
+
+
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-    optimizer = AdamW(model.parameters(), lr=CONFIG["lr"])
+    optimizer = AdamW(other_params, lr=CONFIG["lr"])
+    optimizer_cbam = AdamW(cbam_params, lr=CONFIG["lr"])
     scheduler = CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
+    scheduler_cbam = CosineAnnealingLR(optimizer_cbam, T_max=CONFIG["epochs"])
     scaler = GradScaler()
+    
     
     early_stopping = EarlyStopping(
         patience=CONFIG["patience"],
@@ -66,6 +86,11 @@ def main():
 
     print("starting loop...")
     for epoch in range(1, CONFIG["epochs"] + 1):
+        # Reduce CBAM+SA learning rate at epoch 5
+        if epoch == 5:
+            for param_group in optimizer_cbam.param_groups:
+                param_group['lr'] *= 0.5
+            print(f"Reduced CBAM learning rate to {optimizer_cbam.param_groups[0]['lr']:.6f}")
         model.train()
         train_loss = 0.0
         train_correct = train_total = 0
@@ -73,19 +98,21 @@ def main():
         for imgs, labels in train_loader:
             imgs, labels = imgs.to(device), labels.to(device)
             optimizer.zero_grad()
+            optimizer_cbam.zero_grad()
 
-            with autocast('cuda'):
+            with autocast('cuda', dtype=torch.bfloat16):
                 outputs = model(imgs)
                 loss = criterion(outputs, labels)
 
             scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(
                 model.parameters(),
                 max_norm=1.0,
                 error_if_nonfinite=False
             )
             scaler.step(optimizer)
+            scaler.step(optimizer_cbam)
+
             scaler.update()        
                 
             preds = outputs.argmax(dim=1)
@@ -94,6 +121,8 @@ def main():
             train_total += labels.size(0)
 
         scheduler.step()
+        scheduler_cbam.step()
+
         train_loss /= train_total
         train_acc = train_correct / train_total
 
