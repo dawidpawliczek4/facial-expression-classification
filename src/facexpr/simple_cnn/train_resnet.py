@@ -12,7 +12,7 @@ from sklearn.metrics import confusion_matrix, classification_report, f1_score
 
 # Replace argparse with a simple CONFIG dictionary
 CONFIG = {
-    "data_dir": "/path/to/data/downloaded_data",  # <-- set your path here
+    "data_dir": "/path/to/data/downloaded_data", # <-- set your path here
     "batch_size": 32,
     "epochs": 10,
     "lr": 1e-3,
@@ -84,7 +84,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    #target size 224 for resnet
+    # Target size 224 for ResNet
     target_size = 224
     loaders = make_dataloaders(
         data_dir=args["data_dir"],
@@ -102,7 +102,7 @@ def main():
     optimizer = optim.AdamW(model.parameters(), lr=args["lr"])
     scheduler = CosineAnnealingLR(optimizer, T_max=args["epochs"])
 
-    # freeze parameters of resnet
+    # Freeze parameters of ResNet
     for param in model.backbone.parameters():
         param.requires_grad = False
     for name, param in model.backbone.named_parameters():
@@ -114,7 +114,7 @@ def main():
         train_loss = 0.0
         train_correct = train_total = 0
 
-        #unfreeze some - 'gradual unfreeze'
+        # Unfreeze some - "gradual unfreeze"
         if epoch == args["epochs"] // 2:
             for param in model.backbone.layer3.parameters():
                 param.requires_grad = True
