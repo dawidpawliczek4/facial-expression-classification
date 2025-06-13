@@ -15,12 +15,12 @@ from facexpr.utils.early_stopping import EarlyStopping
 CONFIG = {
     "data_dir": "./data/downloaded_data/data",
     "batch_size": 64,
-    "epochs": 30,
+    "epochs": 10,
     "lr": 1e-3,
     "save_path": "./outputs/models/model.pth",
     "img_size": 224,
     "project": "fer2013-efficientnetv2",
-    "name": "15-cbam-mhsa-30epochs",
+    "name": "16-cbam-multiheadatt",
     "lr-cbam": 1e-2,
 
     # Early stopping parameters
