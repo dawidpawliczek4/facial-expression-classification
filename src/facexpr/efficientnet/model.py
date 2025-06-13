@@ -157,7 +157,7 @@ class EfficientNetV2Classifier(nn.Module):
             new_features.append(block)
             if i in stage_last:
                 new_features.append(CBAM(stage_last[i], ratio=16))
-                new_features.append(MultiHeadSelfAttention2d(stage_last[i]))
+                new_features.append(SelfAttention2d(stage_last[i]))
 
         self.features = nn.Sequential(*new_features)
 
