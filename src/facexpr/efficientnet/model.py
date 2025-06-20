@@ -22,18 +22,16 @@ class SelfAttention2d(nn.Module):
 
     def forward(self, x, explain=False):
         B, C, H, W = x.size()
-        # projekcja
+
         proj_q = self.query_conv(x).view(
-            B, -1, H * W).permute(0, 2, 1)  # B×(H*W)×C'
+            B, -1, H * W).permute(0, 2, 1)
         proj_k = self.key_conv(x).view(
-            B, -1, H * W)                     # B×C'×(H*W)
-        # mapa uwagi
-        # B×(H*W)×(H*W)
+            B, -1, H * W)
+        
         energy = torch.bmm(proj_q, proj_k)
-        attn = self.softmax(energy)                                    # B×N×N
-        # wartość
-        proj_v = self.value_conv(x).view(B, -1, H * W)                  # B×C×N
-        out = torch.bmm(proj_v, attn.permute(0, 2, 1))                  # B×C×N
+        attn = self.softmax(energy)
+        proj_v = self.value_conv(x).view(B, -1, H * W)
+        out = torch.bmm(proj_v, attn.permute(0, 2, 1))
         out = out.view(B, C, H, W)
         y = self.gamma * out + x
         return (y, attn) if explain else y
@@ -53,12 +51,11 @@ class MultiHeadSelfAttention2d(nn.Module):
         self.in_dim = in_dim
         self.heads = heads
         self.head_dim = in_dim // heads
-        total_dim = in_dim  # heads * head_dim
-        # projekcje Q, K, V
+        total_dim = in_dim
+
         self.query_conv = nn.Conv2d(in_dim, total_dim, kernel_size=1)
         self.key_conv = nn.Conv2d(in_dim, total_dim, kernel_size=1)
         self.value_conv = nn.Conv2d(in_dim, total_dim, kernel_size=1)
-        # output projection
         self.out_proj = nn.Conv2d(total_dim, in_dim, kernel_size=1)
         self.gamma = nn.Parameter(torch.zeros(1))
         self.softmax = nn.Softmax(dim=-1)
@@ -67,19 +64,18 @@ class MultiHeadSelfAttention2d(nn.Module):
     def forward(self, x, explain=False):
         B, C, H, W = x.size()
         N = H * W
-        # projekcje
-        q = self.query_conv(x).view(B, self.heads, self.head_dim, N)  # B×h×d×N
-        k = self.key_conv(x).view(B, self.heads, self.head_dim, N)    # B×h×d×N
-        v = self.value_conv(x).view(B, self.heads, self.head_dim, N)  # B×h×d×N
-        # reshape do (B,h,N,d)
-        q = q.permute(0, 1, 3, 2)  # B×h×N×d
-        k = k  # B×h×d×N
-        v = v.permute(0, 1, 3, 2)  # B×h×N×d
-        # attention
-        energy = torch.matmul(q, k) * self.scale  # B×h×N×N
+        q = self.query_conv(x).view(B, self.heads, self.head_dim, N)
+        k = self.key_conv(x).view(B, self.heads, self.head_dim, N)
+        v = self.value_conv(x).view(B, self.heads, self.head_dim, N)
+        
+        q = q.permute(0, 1, 3, 2)
+        k = k
+        v = v.permute(0, 1, 3, 2)
+        
+        energy = torch.matmul(q, k) * self.scale
         attn = self.softmax(energy)
-        out = torch.matmul(attn, v)  # B×h×N×d
-        # powrot do B×(h*d)×H×W
+        out = torch.matmul(attn, v)
+        
         out = out.permute(0, 1, 3, 2).contiguous().view(B, C, H, W)
         out = self.out_proj(out)
         y = self.gamma * out + x
@@ -103,7 +99,7 @@ class ChannelAttention(nn.Module):
         max_out = self.shared_MLP(self.max_pool(x))
         cam = self.sigmoid(avg_out + max_out)
         out = x * cam
-        return (out, cam if explain else out)
+        return (out, cam) if explain else out
 
 
 class SpatialAttention(nn.Module):
@@ -133,23 +129,14 @@ class CBAM(nn.Module):
         super().__init__()
         self.channel_att = ChannelAttention(in_planes, ratio)
         self.spatial_att = SpatialAttention(kernel_size)
-        # self._init_identity()
-
-    def _init_identity(self):
-        # ustaw wagi = 0, bias = 0  → sigmoid(0)=0.5
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.zeros_(m.weight)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
 
     def forward(self, x, explain=False):
         if explain:
-            x, ch_map = self.channel_att(x, explain=True)
-            x, sp_map = self.spatial_att(x, explain=True)
-            return x, ch_map, sp_map
-        x = x * self.channel_att(x)
-        x = x * self.spatial_att(x)
+            x_ca, ch_map = self.channel_att(x, explain=True)
+            x_sa, sp_map = self.spatial_att(x_ca, explain=True)
+            return x_sa, ch_map, sp_map
+        x = self.channel_att(x)
+        x = self.spatial_att(x)
         return x
 
 
@@ -197,7 +184,7 @@ class EfficientNetV2Classifier(nn.Module):
         x = self.features(x)
         if explain:
             x, ch_map, sp_map = self.cbam(x, explain=True)
-            x, attn = self.self_att(x, return_attn=True)
+            x, attn = self.self_att(x, explain=True)
         else:
             x = self.cbam(x)
             x = self.self_att(x)        
