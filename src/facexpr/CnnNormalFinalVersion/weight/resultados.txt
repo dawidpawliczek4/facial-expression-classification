@@ -1,0 +1,4 @@
+best val acc: 0.7013
+TTA test acc:0.7136
+current VRAM: 107.14 MB
+peak VRAM:435.45 MB
