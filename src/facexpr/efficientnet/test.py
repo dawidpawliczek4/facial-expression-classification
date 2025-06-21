@@ -7,18 +7,31 @@ from sklearn.metrics import confusion_matrix, classification_report, f1_score
 from facexpr.efficientnet.model import EfficientNetV2Classifier
 from facexpr.data.load_data import make_dataloaders
 
+CONFIG = {
+    "data_dir": "./data/downloaded_data/data",
+    "batch_size": 64,
+    "img_size": 224,
+}
+
 
 def main():
+    wandb.init(project="fer2013-efficientnetv2", name="test-effnet-v1",
+               config={"name": "test-effnet-v1", "project": "fet2013-efficientnetv2"})
     class_names = ["Angry", "Disgust", "Fear",
                    "Happy", "Sad", "Surprise", "Neutral"]
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = EfficientNetV2Classifier()
-    checkpoint = torch.load('outputs/models/effnet.pth')
-    model.load_state_dict(checkpoint['model_state_dict'])
+    checkpoint = torch.load('outputs/model-effnet-v1.pth', map_location=device, weights_only=True)
+    model.load_state_dict(checkpoint)
     model.to(device)
     model.eval()
 
-    loaders = make_dataloaders()
+    loaders = make_dataloaders(        data_dir=CONFIG["data_dir"],
+        batch_size=CONFIG["batch_size"],
+        img_size=CONFIG['img_size'],
+        num_workers=2,
+        augment=False,
+        grayscale=False)
     test_loader = loaders['test']
 
     correct = 0
@@ -28,25 +41,30 @@ def main():
     explained_one = False
     with torch.no_grad():
         for imgs, labels in test_loader:
+            imgs = imgs.to(device)
+            labels = labels.to(device)
             if not explained_one:
                 outputs, ch_map, sp_map, attn = model(imgs, explain=True)
-                img = imgs[0].cpu().permute(1,2,0).numpy()
-                sp = sp_map[0,0].cpu().numpy()
+                img = imgs[0].cpu().permute(1, 2, 0).numpy()
+                sp = sp_map[0, 0].cpu().numpy()
                 ch = ch_map[0].squeeze().cpu().numpy()
-                head0 = attn[0,0].cpu().numpy().reshape(sp.shape)
-                fig, ax = plt.subplots(1,3, figsize=(12,4))
-                #spatial
+
+                attn_vec = attn[0,0].mean(dim=0)
+                head0 = attn_vec.cpu().numpy().reshape(sp.shape)
+
+                fig, ax = plt.subplots(1, 3, figsize=(12, 4))
+                # spatial
                 ax[0].imshow(img)
                 ax[0].imshow(sp, cmap='jet', alpha=0.5)
                 ax[0].set_title("Spatial Map")
                 ax[0].axis('off')
-                #channel
+                # channel
                 ax[1].bar(range(len(ch)), ch)
                 ax[1].set_title('Channel Map')
-                #mhsa
+                # mhsa
                 ax[2].imshow(head0, cmap='hot')
                 ax[2].set_title("MHSA Map")
-                ax[2].axis('off')                
+                ax[2].axis('off')
                 wandb.log({"test/attention_expl": wandb.Image(fig)})
                 plt.close(fig)
                 explained_one = True
@@ -78,3 +96,7 @@ def main():
         "test/accuracy": acc,
         "test/f1": f1,
     })
+
+
+if __name__ == "__main__":
+    main()

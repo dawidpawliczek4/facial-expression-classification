@@ -17,6 +17,7 @@ dependencies = [
     "matplotlib (>=3.10.3,<4.0.0)",
     "wandb (>=0.20.1,<0.21.0)",
     "lion-pytorch (>=0.2.3,<0.3.0)",
+    "albumentations (>=2.0.8,<3.0.0)",
 ]
 
 [tool.poetry]
