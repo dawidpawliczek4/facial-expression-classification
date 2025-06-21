@@ -3,9 +3,10 @@ import torch
 import torch.nn as nn
 import numpy as np
 import wandb
+import matplotlib.pyplot as plt
 from facexpr.data.load_data_albumentations import make_dataloaders
 from facexpr.efficientnet.model import EfficientNetV2Classifier
-from torch.optim.lr_scheduler import OneCycleLR
+from torch.optim.lr_scheduler import OneCycleLR, CosineAnnealingLR
 from facexpr.utils.visualization import plot_confusion_matrix, plot_f1_history
 from sklearn.metrics import confusion_matrix, classification_report, f1_score
 from torch.amp import autocast, GradScaler
@@ -14,14 +15,14 @@ from facexpr.utils.early_stopping import EarlyStopping
 
 CONFIG = {
     "data_dir": "./data/downloaded_data/data",
-    "batch_size": 64,
-    "epochs": 30,
-    "lr": 1e-3,
+    "batch_size": 128,
+    "epochs": 50,
+    "lr": 5e-3,
     "save_path": "./outputs/models/model.pth",
     "img_size": 224,
     "project": "fer2013-efficientnetv2",
     "name": "19-better-augment",
-    "lr-cbam": 1e-2,
+    "lr-cbam": 5e-2,
 
     # Early stopping parameters
     "patience": 7,
@@ -60,6 +61,7 @@ def main():
         grayscale=False
     )
     train_loader, val_loader = loaders["train"], loaders["val"]
+    visualize_shhit(train_loader, class_names)
 
     model = EfficientNetV2Classifier(num_classes=7).to(device)
 
@@ -74,28 +76,30 @@ def main():
 
     total_steps = CONFIG["epochs"] * len(train_loader)
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-    optimizer = AdamW(other_params, lr=CONFIG["lr"])
-    optimizer_cbam = AdamW(cbam_params, lr=CONFIG["lr"])
+    optimizer = AdamW(other_params, lr=CONFIG["lr"], weight_decay=1e-3)
+    optimizer_cbam = AdamW(cbam_params, lr=CONFIG["lr"], weight_decay=1e-3)
 
-    scheduler = OneCycleLR(
-        optimizer,
-        max_lr=CONFIG["lr"],
-        total_steps=total_steps,
-        pct_start=0.3,             # 30% of steps warming up
-        anneal_strategy='cos',     # cosine annealing down
-        div_factor=25.0,           # initial_lr = max_lr/div_factor
-        final_div_factor=1e4       # min_lr = initial_lr/final_div_factor
-    )
+    scheduler = CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
+    scheduler_cbam = CosineAnnealingLR(optimizer_cbam, T_max=CONFIG["epochs"])
+    # scheduler = OneCycleLR(
+    #     optimizer,
+    #     max_lr=CONFIG["lr"],
+    #     total_steps=total_steps,
+    #     pct_start=0.3,             # 30% of steps warming up
+    #     anneal_strategy='cos',     # cosine annealing down
+    #     div_factor=25.0,           # initial_lr = max_lr/div_factor
+    #     final_div_factor=1e4       # min_lr = initial_lr/final_div_factor
+    # )
 
-    scheduler_cbam = OneCycleLR(
-        optimizer_cbam,
-        max_lr=CONFIG["lr-cbam"],
-        total_steps=total_steps,
-        pct_start=0.3,
-        anneal_strategy='cos',
-        div_factor=25.0,
-        final_div_factor=1e4
-    )
+    # scheduler_cbam = OneCycleLR(
+    #     optimizer_cbam,
+    #     max_lr=CONFIG["lr-cbam"],
+    #     total_steps=total_steps,
+    #     pct_start=0.3,
+    #     anneal_strategy='cos',
+    #     div_factor=25.0,
+    #     final_div_factor=1e4
+    # )
 
     scaler = GradScaler()
 
@@ -135,8 +139,6 @@ def main():
             scaler.step(optimizer)
             scaler.step(optimizer_cbam)
             scaler.update()
-            scheduler.step()
-            scheduler_cbam.step()
 
             preds = outputs.argmax(dim=1)
             train_loss += loss.item() * imgs.size(0)
@@ -145,6 +147,9 @@ def main():
 
         train_loss /= train_total
         train_acc = train_correct / train_total
+        
+        scheduler.step()
+        scheduler_cbam.step()
 
         cm, f1, report, val_loss, val_correct, val_total = evaluate_model(
             model, val_loader, device, criterion)
@@ -212,6 +217,34 @@ def evaluate_model(model, dataloader, device, criterion):
     f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
     report = classification_report(y_true, y_pred, digits=3, zero_division=0)
     return cm, f1, report, val_loss, val_correct, val_total
+
+
+def visualize_shhit(loader, class_names):
+    # Pobierz jedną paczkę
+    imgs, labels = next(iter(loader))
+
+    # imgs: tensor [B, C, H, W], labels: tensor [B]
+    # Wybierz pierwsze 9 obrazów
+    imgs = imgs[:9]
+    labels = labels[:9]
+
+    # Konwertuj na numpy i wstaw do siatki 3×3
+    fig, axes = plt.subplots(3, 3, figsize=(8, 8))
+    for i, ax in enumerate(axes.flatten()):
+        img = imgs[i].cpu().permute(1, 2, 0).numpy()  # H×W×C
+        # jeśli grayscale, to squeeze i cmap='gray'
+        if img.shape[2] == 1:
+            img = img.squeeze(-1)
+            ax.imshow(img, cmap='gray')
+        else:
+            # zdjęcia po Normalize mają wartości w ~[-1,1], przeskaluj do [0,1]
+            img = (img - img.min()) / (img.max() - img.min())
+            ax.imshow(img)
+        ax.set_title(class_names[labels[i].item()])
+        ax.axis('off')
+
+    plt.tight_layout()
+    plt.show()
 
 
 if __name__ == "__main__":
