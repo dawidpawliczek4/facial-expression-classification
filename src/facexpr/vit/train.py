@@ -15,10 +15,10 @@ from torch.optim import AdamW
 CONFIG = {
     "learning_rate": 1e-4,
     "num_classes": 7,
-    "patch_size": 8,
+    "patch_size": 6,
     "img_size": 48,
     "in_channels": 3,
-    "num_heads": 8,
+    "num_heads": 12,
     "dropout": 1e-3,
     "hidden_dim": 3 * 48,
     "weight_decay": 0,
@@ -27,13 +27,13 @@ CONFIG = {
     "num_encoders": 4,
     "device": "cuda" if torch.cuda.is_available() else "cpu",
     "batch_size": 128,
-    "epochs": 40,
+    "epochs": 5,
     "data_dir": "./data/downloaded_data/data",
     "save_path": "./outputs/ViT/model.pth",
     "project": "fer2013-vision-transformer",
 }
 
-CONFIG["name"] = f"1-ViT-patch:{CONFIG['patch_size']}/heads:{CONFIG['num_heads']}/encoders:{CONFIG['num_encoders']}"
+CONFIG["name"] = f"5-ViT-patch:{CONFIG['patch_size']}/heads:{CONFIG['num_heads']}/encoders:{CONFIG['num_encoders']}"
 CONFIG["embed_dim"] = (CONFIG["patch_size"] ** 2) * CONFIG["in_channels"]
 CONFIG["num_patches"] = (CONFIG["img_size"] // CONFIG["patch_size"]) ** 2
 
@@ -88,6 +88,7 @@ def train():
     train_loader, val_loader = loaders["train"], loaders["val"]
 
     model = VisionTransformer(CONFIG).to(device)
+    # model.load_state_dict(torch.load('./outputs/ViT/model.pth', map_location=torch.device(device)))
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = AdamW(
         model.parameters(),
@@ -96,7 +97,7 @@ def train():
         betas=CONFIG["betas"]
     )
     scheduler = CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
-    scaler = GradScaler()
+    scaler = GradScaler(enabled=(True if CONFIG["device"] == 'gpu' else False))
 
     early_stopping = EarlyStopping(
         patience=CONFIG["patience"] if "patience" in CONFIG else 5,
@@ -105,7 +106,7 @@ def train():
     )
 
     print("Starting loop...")
-    for epoch in range(1, CONFIG["epochs"] + 1):
+    for epoch in range(16, 15 + CONFIG["epochs"] + 1):
         model.train()
         train_loss = 0.0
         train_correct = train_total = 0
@@ -114,7 +115,7 @@ def train():
             imgs, labels = imgs.to(device), labels.to(device)
             optimizer.zero_grad()
 
-            with autocast('cuda', dtype=torch.float16):
+            with autocast(CONFIG["device"], dtype=torch.float16):
                 outputs = model(imgs)
                 loss = criterion(outputs, labels)
 
