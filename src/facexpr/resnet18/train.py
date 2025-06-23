@@ -20,8 +20,8 @@ CONFIG = {
     "lr": 5e-3,
     "save_path": "./outputs/models/model.pth",
     "img_size": 224,
-    "project": "fer2013-efficientnetv2",
-    "name": "19-better-augment",
+    "project": "fer2013-resnet",
+    "name": "1-first",
     "lr-cbam": 5e-2,
 
     # Early stopping parameters
