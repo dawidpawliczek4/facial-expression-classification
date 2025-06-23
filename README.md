@@ -5,8 +5,6 @@
 * [Project Overview](#project-overview)
 * [Collaborators](#collaborators)
 * [Motivation](#motivation)
-* [Dataset](#dataset) – TODO
-* [Project Structure](#project-structure) – TODO
 
 ---
 
@@ -39,18 +37,6 @@ Understanding and classifying human facial expressions is a cornerstone of affec
 2. Gain experience with popular datasets (e.g., FER-2013) and preprocessing techniques (normalization, augmentation).
 3. Explore performance trade-offs between network depth, regularization, and data augmentation.
 4. Provide a modular codebase that can be extended to more nuanced or real-time expression recognition tasks.
-
----
-
-## Dataset
-
-*TODO: describe dataset source, classes, and preprocessing steps.*
-
----
-
-## Project Structure
-
-*TODO: outline key folders and scripts (data preparation, models, evaluation, inference).*
 
 ## Installaton
 
