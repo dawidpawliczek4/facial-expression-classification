@@ -61,7 +61,7 @@ def main():
         grayscale=False
     )
     train_loader, val_loader = loaders["train"], loaders["val"]
-    visualize_shhit(train_loader, class_names)
+    visalize_transforms(train_loader, class_names)
 
     model = EfficientNetV2Classifier(num_classes=7).to(device)
 
@@ -74,32 +74,12 @@ def main():
     other_params = [p for n, p in model.named_parameters()
                     if not is_cbam_mhsa(n)]
 
-    total_steps = CONFIG["epochs"] * len(train_loader)
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = AdamW(other_params, lr=CONFIG["lr"], weight_decay=1e-3)
     optimizer_cbam = AdamW(cbam_params, lr=CONFIG["lr"], weight_decay=1e-3)
 
     scheduler = CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
     scheduler_cbam = CosineAnnealingLR(optimizer_cbam, T_max=CONFIG["epochs"])
-    # scheduler = OneCycleLR(
-    #     optimizer,
-    #     max_lr=CONFIG["lr"],
-    #     total_steps=total_steps,
-    #     pct_start=0.3,             # 30% of steps warming up
-    #     anneal_strategy='cos',     # cosine annealing down
-    #     div_factor=25.0,           # initial_lr = max_lr/div_factor
-    #     final_div_factor=1e4       # min_lr = initial_lr/final_div_factor
-    # )
-
-    # scheduler_cbam = OneCycleLR(
-    #     optimizer_cbam,
-    #     max_lr=CONFIG["lr-cbam"],
-    #     total_steps=total_steps,
-    #     pct_start=0.3,
-    #     anneal_strategy='cos',
-    #     div_factor=25.0,
-    #     final_div_factor=1e4
-    # )
 
     scaler = GradScaler()
 
@@ -111,7 +91,6 @@ def main():
 
     print("starting loop...")
     for epoch in range(1, CONFIG["epochs"] + 1):
-        # Reduce CBAM+SA learning rate at epoch 5
         if epoch == 5:
             for param_group in optimizer_cbam.param_groups:
                 param_group['lr'] *= 0.5
@@ -219,25 +198,18 @@ def evaluate_model(model, dataloader, device, criterion):
     return cm, f1, report, val_loss, val_correct, val_total
 
 
-def visualize_shhit(loader, class_names):
-    # Pobierz jedną paczkę
+def visalize_transforms(loader, class_names):
     imgs, labels = next(iter(loader))
-
-    # imgs: tensor [B, C, H, W], labels: tensor [B]
-    # Wybierz pierwsze 9 obrazów
     imgs = imgs[:9]
     labels = labels[:9]
 
-    # Konwertuj na numpy i wstaw do siatki 3×3
     fig, axes = plt.subplots(3, 3, figsize=(8, 8))
     for i, ax in enumerate(axes.flatten()):
-        img = imgs[i].cpu().permute(1, 2, 0).numpy()  # H×W×C
-        # jeśli grayscale, to squeeze i cmap='gray'
+        img = imgs[i].cpu().permute(1, 2, 0).numpy()
         if img.shape[2] == 1:
             img = img.squeeze(-1)
             ax.imshow(img, cmap='gray')
         else:
-            # zdjęcia po Normalize mają wartości w ~[-1,1], przeskaluj do [0,1]
             img = (img - img.min()) / (img.max() - img.min())
             ax.imshow(img)
         ax.set_title(class_names[labels[i].item()])
