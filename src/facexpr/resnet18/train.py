@@ -5,8 +5,8 @@ import numpy as np
 import wandb
 import matplotlib.pyplot as plt
 from facexpr.data.load_data_albumentations import make_dataloaders
-from facexpr.efficientnet.model import EfficientNetV2Classifier
-from torch.optim.lr_scheduler import OneCycleLR, CosineAnnealingLR
+from facexpr.resnet18.model import ResNetClassifier
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from facexpr.utils.visualization import plot_confusion_matrix, plot_f1_history
 from sklearn.metrics import confusion_matrix, classification_report, f1_score
 from torch.amp import autocast, GradScaler
@@ -20,8 +20,8 @@ CONFIG = {
     "lr": 5e-3,
     "save_path": "./outputs/models/model.pth",
     "img_size": 224,
-    "project": "fer2013-efficientnetv2",
-    "name": "19-better-augment",
+    "project": "fer2013-resnet",
+    "name": "1-first",
     "lr-cbam": 5e-2,
 
     # Early stopping parameters
@@ -61,25 +61,13 @@ def main():
         grayscale=False
     )
     train_loader, val_loader = loaders["train"], loaders["val"]
-    visalize_transforms(train_loader, class_names)
 
-    model = EfficientNetV2Classifier(num_classes=7).to(device)
-
-    def is_cbam_mhsa(name):
-        res = any(tag in name.lower() for tag in [
-                  "cbam", "channel_att", "spatial_att", "self_attention", "mhsa", "attention", "att"])
-        return res
-
-    cbam_params = [p for n, p in model.named_parameters() if is_cbam_mhsa(n)]
-    other_params = [p for n, p in model.named_parameters()
-                    if not is_cbam_mhsa(n)]
+    model = ResNetClassifier(num_classes=7).to(device)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-    optimizer = AdamW(other_params, lr=CONFIG["lr"], weight_decay=1e-3)
-    optimizer_cbam = AdamW(cbam_params, lr=CONFIG["lr"], weight_decay=1e-3)
+    optimizer = AdamW(model.parameters(), lr=CONFIG["lr"], weight_decay=1e-3)
 
     scheduler = CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
-    scheduler_cbam = CosineAnnealingLR(optimizer_cbam, T_max=CONFIG["epochs"])
 
     scaler = GradScaler()
 
@@ -91,11 +79,6 @@ def main():
 
     print("starting loop...")
     for epoch in range(1, CONFIG["epochs"] + 1):
-        if epoch == 5:
-            for param_group in optimizer_cbam.param_groups:
-                param_group['lr'] *= 0.5
-            print(
-                f"Reduced CBAM learning rate to {optimizer_cbam.param_groups[0]['lr']:.6f}")
         model.train()
         train_loss = 0.0
         train_correct = train_total = 0
@@ -103,7 +86,6 @@ def main():
         for imgs, labels in train_loader:
             imgs, labels = imgs.to(device), labels.to(device)
             optimizer.zero_grad()
-            optimizer_cbam.zero_grad()
 
             with autocast('cuda', dtype=torch.bfloat16):
                 outputs = model(imgs)
@@ -116,7 +98,6 @@ def main():
                 error_if_nonfinite=False
             )
             scaler.step(optimizer)
-            scaler.step(optimizer_cbam)
             scaler.update()
 
             preds = outputs.argmax(dim=1)
@@ -128,7 +109,6 @@ def main():
         train_acc = train_correct / train_total
         
         scheduler.step()
-        scheduler_cbam.step()
 
         cm, f1, report, val_loss, val_correct, val_total = evaluate_model(
             model, val_loader, device, criterion)
@@ -196,27 +176,6 @@ def evaluate_model(model, dataloader, device, criterion):
     f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
     report = classification_report(y_true, y_pred, digits=3, zero_division=0)
     return cm, f1, report, val_loss, val_correct, val_total
-
-
-def visalize_transforms(loader, class_names):
-    imgs, labels = next(iter(loader))
-    imgs = imgs[:9]
-    labels = labels[:9]
-
-    fig, axes = plt.subplots(3, 3, figsize=(8, 8))
-    for i, ax in enumerate(axes.flatten()):
-        img = imgs[i].cpu().permute(1, 2, 0).numpy()
-        if img.shape[2] == 1:
-            img = img.squeeze(-1)
-            ax.imshow(img, cmap='gray')
-        else:
-            img = (img - img.min()) / (img.max() - img.min())
-            ax.imshow(img)
-        ax.set_title(class_names[labels[i].item()])
-        ax.axis('off')
-
-    plt.tight_layout()
-    plt.show()
 
 
 if __name__ == "__main__":
